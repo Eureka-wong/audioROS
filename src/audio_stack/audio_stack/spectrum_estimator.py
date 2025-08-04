@@ -46,12 +46,13 @@ class SpectrumEstimator(NodeWithParams):
 
     def __init__(self, plot=False):
         super().__init__("spectrum_estimator")
-
+        self.bf_method = self.PARAMS_DICT["bf_method"]
         self.subscription_signals_f = self.create_subscription(
             SignalsFreq, "audio/signals_f", self.listener_callback_signals_f, 1
         )
+        # self.pose_synch = TopicSynchronizer(allowed_lag_ms=20)
+        self.pose_synch = TopicSynchronizer(allowed_lag_ms=20, logger=self.get_logger())
 
-        self.pose_synch = TopicSynchronizer(allowed_lag_ms=20)
         self.subscription = self.create_subscription(
             PoseStamped, "geometry/pose", self.pose_synch.listener_callback, 1
         )
@@ -68,8 +69,9 @@ class SpectrumEstimator(NodeWithParams):
         self.beam_former = None
 
         # create ROS parameters that can be changed from command line.
-        self.add_on_set_parameters_callback(self.set_params)
-        self.set_parameters(parameters)
+        # 注意：参数初始化已经在 NodeWithParams.__init__ 中处理
+        # self.add_on_set_parameters_callback(self.set_params)  # 已在父类中设置
+        # 移除错误的 self.set_parameters(parameters) 调用
 
     def set_params(self, params):
         self.beam_former = None
@@ -101,25 +103,32 @@ class SpectrumEstimator(NodeWithParams):
 
         R = self.beam_former.get_correlation(signals_f)
         if self.bf_method == "mvdr":
+        # if BF_METHOD == "mvdr":
             spectrum = self.beam_former.get_mvdr_spectrum(
                 R, frequencies
             )  # n_frequencies x n_angles
         elif self.bf_method == "das":
+        # elif BF_METHOD == "das":
             spectrum = self.beam_former.get_das_spectrum(
                 R, frequencies
             )  # n_frequencies x n_angles
         else:
             raise ValueError(self.bf_method)
+            # raise ValueError(BF_METHOD)
 
         # publish raw spectrum
         msg_spec = create_spectrum_message(spectrum, frequencies, msg.timestamp)
         self.publisher_spectrum_raw.publish(msg_spec)
         self.get_logger().info(f"Published raw spectrum after {time.time() - t1:.2f}s.")
+        # self.get_logger().info(f"Published raw spectrum message: {msg_spec}")
 
         #### combined specra
+        # pose_message = self.pose_synch.get_latest_message(
+        #     msg.timestamp, self.get_logger()
+        # )
         pose_message = self.pose_synch.get_latest_message(
-            msg.timestamp, self.get_logger()
-        )
+            msg.timestamp)
+        
         if pose_message is None:
             print("skipping cause no pose")
             return
@@ -141,7 +150,10 @@ class SpectrumEstimator(NodeWithParams):
         self.beam_former.add_to_multi_estimate(
             signals_f, frequencies, timestamp, yaw_deg
         )
+        # spectrum_multi = self.beam_former.get_multi_estimate(method=self.current_params["bf_method"])
         spectrum_multi = self.beam_former.get_multi_estimate(method=self.bf_method)
+        # spectrum_multi = self.beam_former.get_multi_estimate(method=BF_METHOD)
+
 
         msg_multi = msg_spec
         msg_multi.spectrum_vect = list(spectrum_multi.astype(float).flatten())

@@ -15,8 +15,8 @@ LOG_LEVEL = "warn"
 BAG_FILE = ""
 
 node_config = {
-    "gateway": {"params": [{"filter_snr_enable": 1}], "pkg": "crazyflie_crtp"},
-    "spectrum_estimator": {"params": [{"bf_method": "das"}], "pkg": "audio_stack"},
+    "gateway": {"ros_parameter": [{"filter_snr_enable": 1}], "pkg": "crazyflie_crtp"},
+    "spectrum_estimator": {"ros_parameter": [{"bf_method": "das"}], "pkg": "audio_stack"},
     "doa_estimator": {"pkg": "audio_stack"},
     "csv_writer": {"pkg": "topic_writer"},
     "audio": {"pkg": "topic_plotter"},
@@ -25,11 +25,14 @@ node_config = {
 }
 
 
+# def generate_launch_description():
+#     return get_launch_description(
+#         node_config, log_level=LOG_LEVEL, bag_filename=BAG_FILE
+#     )
 def generate_launch_description():
     return get_launch_description(
-        node_config, log_level=LOG_LEVEL, bag_filename=BAG_FILE
+        node_config, log_level=LOG_LEVEL
     )
-
 
 def main(argv=sys.argv[1:]):
     ld = generate_launch_description(node_config, log_level=LOG_LEVEL)

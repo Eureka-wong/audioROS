@@ -3,11 +3,12 @@
 
 
 from audio_interfaces_py.messages import convert_sec_nanosec_to_ms
+from rclpy.node import Node
 
 ALLOWED_LAG_MS = 20  # allowed lag between latest message and given timestamp
 N_BUFFER = 1  # number of data to keep, set to 1 for latest message only
 
-
+'''
 def get_time(msg):
     if msg is None:
         return None
@@ -17,15 +18,35 @@ def get_time(msg):
         print(e)
         stamp = msg.header.stamp
         return convert_sec_nanosec_to_ms(stamp.sec, stamp.nanosec)
+'''
+
+def get_time(msg):
+    if msg is None:
+        return None
+    
+    # 首先检查是否有 timestamp 属性（如 SignalsFreq 等消息）
+    if hasattr(msg, 'timestamp'):
+        return msg.timestamp
+    
+    # 如果没有 timestamp，检查是否有 header.stamp（如 PoseStamped 等消息）
+    if hasattr(msg, 'header') and hasattr(msg.header, 'stamp'):
+        stamp = msg.header.stamp
+        return convert_sec_nanosec_to_ms(stamp.sec, stamp.nanosec)
+    
+    # 如果都没有，返回 None
+    return None
 
 
 class TopicSynchronizer(object):
+# class TopicSynchronizer(Node):
     """ Helper class to keep track of the latest message on a given topic within an admissible delay. """
 
     def __init__(self, allowed_lag_ms=ALLOWED_LAG_MS, logger=None, n_buffer=N_BUFFER):
+        # super().__init__("topic_synchronizer")
         self.allowed_lag_ms = allowed_lag_ms
         self.latest_message = None
         self.logger = logger
+        # self.node = node
         self.n_buffer = n_buffer
         if n_buffer > 1:
             self.buffer = [None] * n_buffer

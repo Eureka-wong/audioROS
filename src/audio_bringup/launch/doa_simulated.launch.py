@@ -12,7 +12,9 @@ import launch
 from audio_bringup.helpers import get_launch_description
 
 LOG_LEVEL = "warn"
+# LOG_LEVEL = "info"
 
+"""
 node_config = {
     "crazyflie": {
         "pkg": "audio_simulation",
@@ -22,6 +24,28 @@ node_config = {
     "processor": {
         "pkg": "audio_stack",
         "params": [{"min_freq": 1000, "max_freq": 5000}],
+    },
+    "spectrum_estimator": {"pkg": "audio_stack"},
+    "doa_estimator": {"pkg": "audio_stack"},
+    # "audio": {"pkg": "topic_plotter"},
+    # "doa": {"pkg": "topic_plotter"}, is very slow
+    "geometry": {"pkg": "topic_plotter"},
+}
+"""
+"""
+    "ros_parameters" cannot change the default values of the parameters!!
+    To change the parameters, go to the corresponding src and change them manually.
+"""
+
+node_config = {
+    "crazyflie": {
+        "pkg": "audio_simulation",
+        "ros__parameters": [{"buzzer_freq": 0, "speaker_type": "random",}],
+    },
+    "linear_pose_publisher": {"pkg": "audio_simulation"},
+    "processor": {
+        "pkg": "audio_stack",
+        "ros__parameters": [{"min_freq": 1000, "max_freq": 5000}],
     },
     "spectrum_estimator": {"pkg": "audio_stack"},
     "doa_estimator": {"pkg": "audio_stack"},

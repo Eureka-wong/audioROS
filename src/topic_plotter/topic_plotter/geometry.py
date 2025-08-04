@@ -38,7 +38,8 @@ YLABEL = "y [m]"
 
 Z_THRESHOLD_M = 0  # 0.3  # do not plot poses below this threshold
 
-PLOT_POSE = False
+# PLOT_POSE = False
+PLOT_POSE = True  # 需要启用pose订阅以支持DOA可视化
 PLOT_RAW = True
 PLOT_IMU = False
 
@@ -84,6 +85,9 @@ class GeometryPlotter(Node):
 
         self.plotter_dict = {}
         self.pose_dict = {}
+        
+        # 使用相对时间戳，与DOA时间戳保持一致
+        self.start_time = None  # 记录开始时间，用于计算相对时间戳
 
         if PLOT_RAW or PLOT_IMU:
             self.subscription_pose_raw = self.create_subscription(
@@ -120,11 +124,20 @@ class GeometryPlotter(Node):
             self.ground_truth_synch.listener_callback,
             10,
         )
+        # 禁用自动关闭定时器，以便持续运行
+        # self.shutdown_timer = self.create_timer(5.0, self.shutdown_callback)
+        # self.get_logger().info("geometry Estimator will shutdown in 5 seconds")
 
+    def shutdown_callback(self):
+        """10秒后自动关闭节点"""
+        self.get_logger().info("5 seconds elapsed, shutting down geometry estimator node")
+        rclpy.shutdown()
+
+    
     def init_plotter(self, name, xlabel="x", ylabel="y", equal=True):
         if not (name in self.plotter_dict.keys()):
             self.plotter_dict[name] = LivePlotter(
-                np.inf, -np.inf, label=name, log=False
+                np.inf, -np.inf, label=name, log=False, logger=self.get_logger()
             )
             self.plotter_dict[name].ax.set_xlabel(xlabel)
             self.plotter_dict[name].ax.set_ylabel(ylabel)
@@ -135,7 +148,7 @@ class GeometryPlotter(Node):
             # plot_source(self.plotter_dict[name].ax)
 
     def update_plotter(
-        self, name, pose_dict, yaw_deg=False, source_direction_deg=None,
+        self, name, pose_dict, yaw_deg=False, source_direction_deg=None, timestamp=None
     ):
         self.init_plotter(name, xlabel=XLABEL, ylabel=YLABEL)
 
@@ -143,7 +156,7 @@ class GeometryPlotter(Node):
         latest_pose = get_latest_pose(pose_dict)
 
         self.plotter_dict[name].update_scatter(
-            pose_data[0, :], pose_data[1, :], label=name, color="C0"
+            pose_data[0, :], pose_data[1, :], label=name, color="C0", timestamp=timestamp
         )
 
         if yaw_deg:
@@ -194,25 +207,93 @@ class GeometryPlotter(Node):
         if new_position[2] < Z_THRESHOLD_M:
             return
 
-        timestamp = convert_stamp_to_ms(msg_pose.header.stamp)
-        if self.pose_dict["pose"]["start_time"] is None:
-            self.pose_dict["pose"]["start_time"] = timestamp
-        timestamp = timestamp - self.pose_dict["pose"]["start_time"]
+        # 使用相对时间戳，与DOA时间戳保持一致
+        ros_timestamp = convert_stamp_to_ms(msg_pose.header.stamp)
+        
+        # 计算相对时间戳
+        if self.start_time is None:
+            self.start_time = ros_timestamp
+            self.get_logger().info(f"Set start time: {self.start_time}")
+        
+        # 转换为相对时间戳（毫秒）
+        timestamp = ros_timestamp - self.start_time
 
         assert pitch == 0, pitch
         assert roll == 0, roll
         add_pose(self.pose_dict["pose"], [*new_position[:2], yaw], time=timestamp)
 
-        self.update_plotter("pose", self.pose_dict["pose"], yaw_deg=True)
+        # 清除timestamp（只有DOA可视化时才设置timestamp）
+        if "pose" in self.plotter_dict:
+            self.plotter_dict["pose"]._current_timestamp = None
+        
+        self.update_plotter("pose", self.pose_dict["pose"], yaw_deg=True, timestamp=timestamp)
+        self.get_logger().info(f"Pose updated with relative timestamp: {timestamp}ms")
 
     def listener_callback_doa(self, msg_doa):
         """Plot the estimated DOA directions on the most recent pose."""
+        self.get_logger().info("=== DOA CALLBACK TRIGGERED ===") 
         self.init_plotter("position", xlabel=XLABEL, ylabel=YLABEL)
 
         doa_estimates = list(msg_doa.doa_estimates_deg)
+        doa_timestamp = msg_doa.timestamp  # 直接使用DOA消息的音频时间戳
+        
+        self.get_logger().info(f"DOA visualization using audio timestamp: {doa_timestamp}ms")
+        
+       # 添加详细的DOA分析日志
+        self.get_logger().info(f"Raw DOA estimates: {doa_estimates}")
+
+       # 计算理论DOA角度进行对比
+        if "pose" in self.pose_dict and self.pose_dict["pose"]["index"] >= 0:
+            latest_pose = get_latest_pose(self.pose_dict["pose"])
+            drone_pos = np.array([latest_pose[0], latest_pose[1], 1.0])  # 假设z=1.0
+            speaker_pos = np.array(SPEAKER_POSITION)
+            
+            # 计算理论方向向量
+            direction_vector = speaker_pos - drone_pos
+            theoretical_angle = np.degrees(np.arctan2(direction_vector[1], direction_vector[0]))
+            theoretical_angle = theoretical_angle % 360  # 确保0-360度范围
+            
+            self.get_logger().info(f"Drone position: [{drone_pos[0]:.2f}, {drone_pos[1]:.2f}, {drone_pos[2]:.2f}]")
+            # self.get_logger().info(f"Speaker position: [{speaker_pos[0]:.2f}, {speaker_pos[1]:.2f}, {speaker_pos[2]:.2f}]")
+            self.get_logger().info(f"Direction vector: [{direction_vector[0]:.2f}, {direction_vector[1]:.2f}]")
+            # self.get_logger().info(f"Theoretical DOA angle: {theoretical_angle:.1f}°")
+            
+            
+            # 计算估计误差
+            if doa_estimates:
+                error = abs(theoretical_angle - doa_estimates[0])
+                if error > 180:
+                    error = 360 - error  # 处理角度环绕
+                self.get_logger().info(f"DOA estimation error: {error:.1f}° (estimated: {doa_estimates[0]:.1f}°, theoretical: {theoretical_angle:.1f}°)")
+        
+        self.get_logger().info(f"-------------------------")
+
+        # 记录无人机当前姿态
+        if "pose" in self.pose_dict and self.pose_dict["pose"]["index"] >= 0:
+            latest_pose = get_latest_pose(self.pose_dict["pose"])
+            drone_yaw = latest_pose[2]  # yaw角度
+            self.get_logger().info(f"Current drone yaw: {drone_yaw:.1f}°")
+        
+        # 检查是否有可用的姿态数据
+        if "pose" not in self.pose_dict:
+            self.get_logger().warn("No pose data available for DOA visualization")
+            return
+        
+        # 检查姿态字典是否为空
+        if self.pose_dict["pose"]["index"] == -1:
+            self.get_logger().warn("No pose messages received yet")
+            return
+
+        # 设置当前时间戳到plotter，用于生成包含时间戳的文件名
+        if "pose" in self.plotter_dict:
+            self.plotter_dict["pose"].set_timestamp(doa_timestamp)
+            self.get_logger().info(f"Set DOA timestamp {doa_timestamp} for geometry visualization filename")
 
         for i, doa_estimate in enumerate(doa_estimates):
             latest_pose = get_latest_pose(self.pose_dict["pose"])
+            if "pose" not in self.plotter_dict:
+                self.update_plotter("pose", self.pose_dict["pose"], yaw_deg=True)
+            
             self.plotter_dict["pose"].update_arrow(
                 latest_pose[:2], doa_estimate, label=f"doa {i}"
             )

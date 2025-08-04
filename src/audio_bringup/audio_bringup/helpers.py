@@ -74,6 +74,7 @@ def get_launch_description(
     from launch.actions import RegisterEventHandler, TimerAction
     from launch.event_handlers import OnProcessStart, OnProcessIO
 
+
     bag_record = ""
     if bag_record_root != "":
         for counter in range(100):
@@ -91,6 +92,7 @@ def get_launch_description(
             "log_level", default_value=[log_level], description="Logging level",
         )
     ]
+
     for executable, dict_ in node_config.items():
         if "params" in dict_.keys():
             raise DeprecationWarning("Do not use params, but ros__parameters")

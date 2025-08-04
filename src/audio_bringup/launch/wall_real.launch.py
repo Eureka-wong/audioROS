@@ -16,7 +16,7 @@ LOG_LEVEL = "warn"
 node_config = {
     "gateway": {
         "pkg": "crazyflie_crtp",
-        "params": [
+        "ros_parameters": [
             {
                 "buzzer_effect": 12,
                 "buzzer_freq": 2000,

@@ -91,11 +91,11 @@ class CsvWriter(Node):
         self.declare_parameter("filename")
         self.add_on_set_parameters_callback(self.set_params)
 
+        self.csv_helper = CsvHelper()
         self.reset()
         self.get_logger().info(
             "Subscribed to audio/signals_f and crazyflie/status and crazyflie/motors and geometry/pose_raw."
         )
-        self.csv_helper = CsvHelper()
 
     def reset(self):
         self.csv_helper.reset()

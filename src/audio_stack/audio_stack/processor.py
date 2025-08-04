@@ -17,6 +17,7 @@ import rclpy
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir + "/../../../crazyflie-audio/python/")
+
 from noise_cancellation import filter_iir_bandpass
 from bin_selection import select_frequencies as embedded_select_frequencies
 
@@ -93,7 +94,9 @@ class Processor(NodeWithParams):
     PARAMS_DICT = {
         "n_freqs": 32,
         "min_freq": 100,
+        # "min_freq": 1000,
         "max_freq": 8000,
+        # "max_freq": 5000,
         "delta_freq": 100,  # not used without thrust
         "filter_snr": 0,  # equivalent to filter_snr_enable
         "thrust": 0,  # if > 0, we use filter_props_enable

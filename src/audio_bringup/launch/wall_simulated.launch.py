@@ -6,6 +6,8 @@ wall_simulated.launch.py: Launch the wall detection pipeline in simulation.
 """
 
 import sys
+import os
+from pathlib import Path
 
 import launch
 
@@ -13,14 +15,18 @@ from audio_bringup.helpers import get_launch_description
 
 LOG_LEVEL = "warn"
 
-params_path = "config/wall_simulated.yaml"
+params_path = os.path.join("audioROS", "params", "wall_simulated.yaml")
 
 node_config = {
-    "crazyflie": {"pkg": "audio_simulation", "ros__parameters": [params_path],},
+    "crazyflie": {"pkg": "audio_simulation", "ros__parameters": [{"buzzer_freq": 2000,
+    "source_type": "none"}],},
     "wall_approach_publisher": {"pkg": "audio_simulation"},
-    "processor": {"pkg": "audio_stack", "ros__parameters": [params_path],},
-    "geometry": {"pkg": "topic_plotter"},
-    "wall": {"pkg": "topic_plotter"},
+    "processor": {"pkg": "audio_stack", "ros__parameters": [{"min_freq": 2000,
+    "max_freq": 2000
+}],},
+    # 暂时禁用可视化节点
+    # "geometry": {"pkg": "topic_plotter"},
+    # "wall": {"pkg": "topic_plotter"},
 }
 
 

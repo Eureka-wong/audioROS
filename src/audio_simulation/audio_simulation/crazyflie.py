@@ -95,16 +95,17 @@ def create_room(speaker_position, buzzer_position, mic_array):
 
 class CrazyflieSimulation(NodeWithParams):
     PARAMS_DICT = {
-        "speaker_type": "mono",
-        "speaker_freq": 3500,
+        "speaker_type": "random",
+        "speaker_freq": 4000,
         "buzzer_type": "mono",
-        "buzzer_freq": 4000,
+        # "buzzer_freq": 4000,
+        "buzzer_freq": 0,  # 0 means no buzzer
     }
     # constants
     mic_positions = np.array(MIC_POSITIONS)  # 4 x 2
     buzzer_position = np.array(BUZZER_POSITION)  # 1 x 2
     speaker_position_global = np.array(SPEAKER_POSITION)  # 3,
-
+    
     def __init__(self):
         super().__init__("audio_simulation")
         self.publisher_signals = self.create_publisher(Signals, "audio/signals", 10)
@@ -134,7 +135,7 @@ class CrazyflieSimulation(NodeWithParams):
 
         # parameter stuff
         self.add_on_set_parameters_callback(self.set_params)
-
+        print(f"CrazyflieSimulation initialized with parameters: {self.current_params}") 
         # start
         self.update_positions()
         self.update_geometry()

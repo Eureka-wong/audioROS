@@ -10,7 +10,12 @@ import matplotlib
 import matplotlib.pylab as plt
 import numpy as np
 
-matplotlib.use("TkAgg")
+# 在Docker中使用X11转发时，使用TkAgg后端
+# 如果没有显示，会自动回退到Agg后端
+try:
+    matplotlib.use("TkAgg")
+except ImportError:
+    matplotlib.use("Agg")
 matplotlib.interactive(False)
 current_cmap = matplotlib.cm.get_cmap()
 current_cmap.set_bad(color="gray")
@@ -43,6 +48,8 @@ class LivePlotter(object):
         min_xlim=MIN_XLIM,
         ax=None,
         fig=None,
+        timestamp=None,
+        logger=None,  # 添加logger参数
     ):
         self.max_ylim = max_ylim
         self.min_ylim = min_ylim
@@ -52,6 +59,9 @@ class LivePlotter(object):
         self.vmax = -np.inf
 
         self.log = log
+        self._current_timestamp = timestamp  # for saving plots
+        self.logger = logger  # 存储传入的logger
+        
 
         if (fig is None) and (ax is None):
             self.fig, self.ax = plt.subplots()
@@ -69,6 +79,13 @@ class LivePlotter(object):
 
         self.mesh = None
         self.colorbar = None
+        
+        # 添加图像保存功能
+        self.save_counter = 0
+        self.save_interval = 1  # 每10次更新保存一次
+        self.save_dir = "AUDIOROS/tmp/plots"  # Docker容器中的保存路径
+        import os
+        os.makedirs(self.save_dir, exist_ok=True)
 
         self.fig.canvas.mpl_connect("close_event", self.handle_close)
         self.fig.canvas.mpl_connect("resize_event", self.handle_resize)
@@ -76,6 +93,37 @@ class LivePlotter(object):
         # Need the block argument to make sure the script continues after
         # plotting the figure.
         plt.show(block=False)
+
+    def save_plot(self, suffix="", timestamp=None):
+        """保存当前图像到文件"""
+        # 优先使用传入的timestamp，否则使用存储的_current_timestamp
+        save_timestamp = timestamp if timestamp is not None else getattr(self, '_current_timestamp', None)
+        if save_timestamp is None:
+            filename = f"{self.save_dir}/plot_{self.save_counter:04d}{suffix}.png"
+        else:
+            filename = f"{self.save_dir}/plot_ts_{save_timestamp}{suffix}.png"
+        self.fig.savefig(filename, dpi=100, bbox_inches='tight')
+        # self.get_logger().info(f"Saved plot to {filename} with timestamp: {save_timestamp}")
+        self.save_counter += 1
+
+    def set_timestamp(self, timestamp):
+        """设置当前时间戳，用于文件名"""
+        self._current_timestamp = timestamp
+
+    def get_logger(self):
+        """获取logger，如果没有则返回None或使用print"""
+        if self.logger is not None:
+            return self.logger
+        else:
+            # 如果没有传入logger，创建一个模拟的logger
+            class MockLogger:
+                def info(self, msg):
+                    print(f"[INFO] {msg}")
+                def warn(self, msg):
+                    print(f"[WARN] {msg}")
+                def error(self, msg):
+                    print(f"[ERROR] {msg}")
+            return MockLogger()
 
     def handle_close(self, evt):
         plt.close("all")
@@ -247,6 +295,9 @@ class LivePlotter(object):
     def update_scatter(self, x_data, y_data, label="position", **kwargs):
         """ Plot x_data and y_data as scattered points.
         """
+        # 提取timestamp参数，不传递给matplotlib
+        timestamp = kwargs.pop('timestamp', None)
+        
         if label in self.scatter.keys():
             self.scatter[label].set_data(x_data, y_data)
 
@@ -258,7 +309,17 @@ class LivePlotter(object):
 
         self.reset_xlim()
         self.reset_ylim()
-
+        
+        '''''
+        # 定期保存图像（仅在geometry可视化时）
+        if hasattr(self, 'save_counter') and self.save_counter % self.save_interval == 0:
+            # 优先使用传入的timestamp，否则使用_current_timestamp
+            save_timestamp = timestamp if timestamp is not None else getattr(self, '_current_timestamp', None)
+            if save_timestamp is not None:
+                self.save_plot("_geometry", timestamp=save_timestamp)
+            else:
+                self.save_plot("_geometry")
+        '''
     def reset_ylim(self):
         # recompute the ax.dataLim
         self.ax.relim()

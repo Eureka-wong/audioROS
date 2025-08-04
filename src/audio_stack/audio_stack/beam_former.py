@@ -328,7 +328,7 @@ class BeamFormer(object):
         self.signals_f_aligned = np.full(
             (len(frequencies), combination_n * self.mic_positions.shape[0]),
             np.nan,
-            dtype=np.complex,
+            dtype=np.complex128,  # 修复: 使用 np.complex128 替代弃用的 np.complex
         )
         self.multi_mic_positions = np.full(
             (combination_n * self.mic_positions.shape[0], self.mic_positions.shape[1]),
