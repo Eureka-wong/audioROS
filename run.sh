@@ -5,7 +5,7 @@ set -e  # 任何命令失败时立即退出
 source /opt/ros/galactic/setup.bash
 
 # 进入工作区根目录（不是src目录）
-cd /root/audioROS_ws
+# cd /root/audioROS_ws
 
 # 清理之前的编译文件（可选）
 # rm -rf build install log
@@ -14,21 +14,23 @@ cd /root/audioROS_ws
 echo "Building audio_interfaces package..."
 colcon build --packages-select audio_interfaces --cmake-args -DCMAKE_BUILD_TYPE=Release
 
-echo "Building audio_bringup package..."
-colcon build --packages-select audio_bringup --cmake-args -DCMAKE_BUILD_TYPE=Release
-
 echo "Building all remaining packages..."
 colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 
+echo "Building symlinks-install..."
+colcon build --symlink-install
+
+echo "Building audio_bringup package..."
+colcon build --packages-select audio_bringup --cmake-args -DCMAKE_BUILD_TYPE=Release
+
 # 加载工作区环境
 if [ -f "install/setup.bash" ]; then
-    echo "Sourcing workspace setup..."
     source install/setup.bash
+    echo "Sourcing workspace setup..." 
 else
     echo "ERROR: install/setup.bash not found. Build may have failed."
     exit 1
 fi
-
 # 验证包是否可用
 # echo "Checking if audio_bringup package is available..."
 # ros2 pkg list | grep audio_bringup || {

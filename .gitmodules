@@ -4,3 +4,6 @@
 [submodule "audio-localization-dataset"]
 	path = datasets
 	url = git@github.com:lcav/audio-localization-dataset
+[submodule "gtsam"]
+	path = gtsam
+	url = https://github.com/borglab/gtsam.git
