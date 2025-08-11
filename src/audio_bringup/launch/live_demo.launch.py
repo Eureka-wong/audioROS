@@ -15,13 +15,17 @@ PARAMS_FILE = "params/live_demo.yaml"
 
 def generate_launch_description():
     node_config = {
-        "gateway": {"pkg": "crazyflie_crtp"},
+        # "gateway": {"pkg": "crazyflie_crtp"},  # 不使用真实硬件
+        "crazyflie": {"pkg": "audio_simulation"},  
+        "linear_pose_publisher": {"pkg": "audio_simulation"},
+        "processor": {"pkg": "audio_stack"},  
         "wall_mapper": {"pkg": "audio_gtsam"},
         "wall_detection": {"pkg": "crazyflie_demo"},
         "pose_synch": {"pkg": "audio_stack"},
-        "geometry": {"pkg": "topic_plotter"},
+        "wall": {"pkg": "topic_plotter"},  # 启用wall plotter
         "distribution": {"pkg": "topic_plotter"},
-        "status": {"pkg": "topic_plotter"},
+        # "geometry": {"pkg": "topic_plotter"},
+        # "status": {"pkg": "topic_plotter"},
     }
     for node in node_config.keys():
         node_config[node]["ros__parameters"] = [PARAMS_FILE]
