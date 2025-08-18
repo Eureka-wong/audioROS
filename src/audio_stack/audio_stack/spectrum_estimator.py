@@ -68,10 +68,7 @@ class SpectrumEstimator(NodeWithParams):
         )
         self.beam_former = None
 
-        # create ROS parameters that can be changed from command line.
-        # 注意：参数初始化已经在 NodeWithParams.__init__ 中处理
-        # self.add_on_set_parameters_callback(self.set_params)  # 已在父类中设置
-        # 移除错误的 self.set_parameters(parameters) 调用
+      # 这里只发布了audio/spectrum_raw 话题,适合调试和实时监测原始的波束形成输出
 
     def set_params(self, params):
         self.beam_former = None

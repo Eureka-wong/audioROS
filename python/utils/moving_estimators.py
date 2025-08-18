@@ -120,7 +120,7 @@ class MovingEstimator(BaseEstimator):
         # window = min(min(angle_idx, 3), distributions.shape[0] - angle_idx)
         # probs_dist = np.sum(distributions[int(angle_idx-window):int(angle_idx+window+1), :], axis=0)
         probs_dist = clean_distribution(probs_dist)
-        return distances_cm, probs_dist, angles_deg, probs_angles
+        return distances_cm, probs_dist, angle_idx, angles_deg, probs_angles
 
     def get_distance_estimate(self, dist, method=ESTIMATION_METHOD):
         return get_estimate(self.distances_cm, dist, method=method)

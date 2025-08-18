@@ -145,7 +145,11 @@ class WallBackend(object):
         self.use_isam = use_isam
         if self.use_isam:
             params = gtsam.ISAM2Params()
-            params.setRelinearizeSkip(1)
+            # 新版本GTSAM使用relinearizeSkip而不是setRelinearizeSkip
+            try:
+                params.setRelinearizeSkip(1)  # 尝试旧版本方法
+            except AttributeError:
+                params.relinearizeSkip = 1    # 使用新版本方法
             self.isam = gtsam.ISAM2(params=params)
         else:
             self.graph = gtsam.NonlinearFactorGraph()
@@ -217,6 +221,7 @@ class WallBackend(object):
 
         vector = get_vector(azimuth=azimuth, elevation=elevation)
         new_plane = gtsam.OrientedPlane3(gtsam.Unit3(vector), distance)
+        # new_plane = gtsam.Plane(gtsam.Unit3(vector), distance)
 
         # Figure out when we are next to a new plane
         current_plane_global = None
@@ -224,6 +229,7 @@ class WallBackend(object):
         found_match = False
         for plane_index in range(self.plane_index_max + 1):
             current_plane_global = self.result.atOrientedPlane3(P(plane_index))
+            # current_plane_global = self.result.atPlane(P(plane_index))
             current_plane = current_plane_global.transform(current_pose)
             error = plane_error(current_plane, new_plane)
 
@@ -269,6 +275,12 @@ class WallBackend(object):
             X(self.pose_index),
             P(self.plane_index),
         )
+        # factor = gtsam.Plane3Factor(
+        #     new_plane.planeCoefficients(),
+        #     plane_noise,
+        #     X(self.pose_index),
+        #     P(self.plane_index),
+        # )
         new_factors.push_back(factor)
         if self.use_isam:
             self.isam.update(new_factors, initial_estimates)
@@ -363,6 +375,9 @@ class WallBackend(object):
                 plane_global = gtsam.OrientedPlane3(
                     np.r_[normal_vector_global, 0, 10]
                 )  # 10 is distance, doesn't matter
+                # plane_global = gtsam.Plane(
+                #     np.r_[normal_vector_global, 0, 10]
+                # )  # 10 is distance, doesn't matter
 
                 current_pose = self.result.atPose3(X(self.pose_index))
                 plane_local = plane_global.transform(current_pose)
@@ -432,7 +447,7 @@ class WallBackend(object):
         plane_global = gtsam.OrientedPlane3(
                 np.r_[normal_vector_global, 0, 10]
         )  # 10 is distance, doesn't matter
-
+    
         current_pose = self.result.atPose3(X(self.pose_index))
         plane_local = plane_global.transform(current_pose)
         azimuth_estimated_rad = get_azimuth_angle(plane_local.normal().point3())
@@ -454,8 +469,21 @@ class WallBackend(object):
             )
             self.result = optimizer.optimizeSafely()
         self.need_to_update_results = False
-        planes = gtsam.utilities.allOrientedPlane3s(self.result)
-        poses = gtsam.utilities.allPose3s(self.result)
+        
+        # 手動提取所有planes和poses，替代已棄用的utilities函數
+        planes = {}
+        poses = {}
+        
+        # 遍歷結果中的所有鍵
+        for key in self.result.keys():
+            symbol_chr = gtsam.Symbol(key).chr()
+            symbol_index = gtsam.Symbol(key).index()
+            
+            if symbol_chr == ord('P'):  # P符號表示planes
+                planes[symbol_index] = self.result.atOrientedPlane3(key)
+            elif symbol_chr == ord('X'):  # X符號表示poses
+                poses[symbol_index] = self.result.atPose3(key)
+        
         return planes, poses
 
     def check_wall(self, verbose=False):
@@ -473,6 +501,9 @@ class WallBackend(object):
         plane_estimate = self.result.atOrientedPlane3(
             P(self.plane_index)
         )  # in global coordinates!
+        # plane_estimate = self.result.atPlane(
+        #     P(self.plane_index)
+        # )  # in global coordinates!
         normal = plane_estimate.normal().point3()
 
         distance_estimate = abs(self.get_distance_estimate())
@@ -514,6 +545,7 @@ class WallBackend(object):
             self.get_results()
 
         plane_estimate = self.result.atOrientedPlane3(P(self.plane_index))
+        # plane_estimate = self.result.atPlane(P(self.plane_index))
         latest_pose_estimate = self.result.atPose3(X(self.pose_index))
         plane_estimate_from_pose = plane_estimate.transform(latest_pose_estimate)
         return plane_estimate_from_pose.distance()
@@ -529,6 +561,7 @@ class WallBackend(object):
             self.get_results()
 
         plane_estimate = self.result.atOrientedPlane3(P(index))
+        # plane_estimate = self.result.atPlane(P(index))
         return plane_estimate.distance()
 
     def get_global_normal_estimate(self, index):
@@ -542,6 +575,8 @@ class WallBackend(object):
             self.get_results()
 
         plane_estimate = self.result.atOrientedPlane3(P(index))
+        # plane_estimate = self.result.atPlane(P(index))
+
         return plane_estimate.normal().point3()
 
     def get_angle_estimate(self):
@@ -557,6 +592,7 @@ class WallBackend(object):
             self.get_results()
 
         plane_estimate = self.result.atOrientedPlane3(P(self.plane_index))
+        # plane_estimate = self.result.atPlane(P(self.plane_index))
         latest_pose_estimate = self.result.atPose3(X(self.pose_index))
         plane_estimate_from_pose = plane_estimate.transform(latest_pose_estimate)
         return plane_estimate_from_pose.distance()
@@ -569,6 +605,7 @@ class WallBackend(object):
             self.get_results()
 
         plane_estimate = self.result.atOrientedPlane3(P(self.plane_index))
+        # plane_estimate = self.result.atPlane(P(self.plane_index))
         latest_pose_estimate = self.result.atPose3(X(self.pose_index))
         plane_estimate_from_pose = plane_estimate.transform(latest_pose_estimate)
         return plane_estimate_from_pose.normal().point3()

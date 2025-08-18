@@ -128,11 +128,6 @@ class GeometryPlotter(Node):
         # self.shutdown_timer = self.create_timer(5.0, self.shutdown_callback)
         # self.get_logger().info("geometry Estimator will shutdown in 5 seconds")
 
-    def shutdown_callback(self):
-        """10秒后自动关闭节点"""
-        self.get_logger().info("5 seconds elapsed, shutting down geometry estimator node")
-        rclpy.shutdown()
-
     
     def init_plotter(self, name, xlabel="x", ylabel="y", equal=True):
         if not (name in self.plotter_dict.keys()):
@@ -173,7 +168,11 @@ class GeometryPlotter(Node):
 
     def listener_callback_pose_raw(self, msg_pose_raw):
         """Plot the latest poses, calculated from the velocity estimates."""
+        self.get_logger().info("=== POSE RAW CALLBACK TRIGGERED ===")
         r_world, v_world, yaw, yaw_rate = read_pose_raw_message(msg_pose_raw)
+        self.get_logger().info(
+            f"Pose raw: r_world={r_world}, v_world={v_world}, yaw={yaw}, yaw_rate={yaw_rate}"
+        )
         if r_world[2] < Z_THRESHOLD_M:
             return
         timestamp = msg_pose_raw.timestamp
@@ -204,6 +203,8 @@ class GeometryPlotter(Node):
     def listener_callback_pose(self, msg_pose):
         """Plot the latest poses."""
         new_position, yaw, pitch, roll = read_pose_message(msg_pose)
+        self.get_logger().info(
+            f"Pose: position={new_position}, yaw={yaw}, pitch={pitch}, roll={roll}")
         if new_position[2] < Z_THRESHOLD_M:
             return
 
@@ -232,6 +233,7 @@ class GeometryPlotter(Node):
     def listener_callback_doa(self, msg_doa):
         """Plot the estimated DOA directions on the most recent pose."""
         self.get_logger().info("=== DOA CALLBACK TRIGGERED ===") 
+        self.get_logger().info(f"Receive msg_doa: {msg_doa}")
         self.init_plotter("position", xlabel=XLABEL, ylabel=YLABEL)
 
         doa_estimates = list(msg_doa.doa_estimates_deg)
@@ -245,7 +247,8 @@ class GeometryPlotter(Node):
        # 计算理论DOA角度进行对比
         if "pose" in self.pose_dict and self.pose_dict["pose"]["index"] >= 0:
             latest_pose = get_latest_pose(self.pose_dict["pose"])
-            drone_pos = np.array([latest_pose[0], latest_pose[1], 1.0])  # 假设z=1.0
+            # drone_pos = np.array([latest_pose[0], latest_pose[1], 1.0])  # 假设z=1.0
+            drone_pos = np.array([latest_pose[0], latest_pose[1], latest_pose[2]]) 
             speaker_pos = np.array(SPEAKER_POSITION)
             
             # 计算理论方向向量
@@ -255,7 +258,7 @@ class GeometryPlotter(Node):
             
             self.get_logger().info(f"Drone position: [{drone_pos[0]:.2f}, {drone_pos[1]:.2f}, {drone_pos[2]:.2f}]")
             # self.get_logger().info(f"Speaker position: [{speaker_pos[0]:.2f}, {speaker_pos[1]:.2f}, {speaker_pos[2]:.2f}]")
-            self.get_logger().info(f"Direction vector: [{direction_vector[0]:.2f}, {direction_vector[1]:.2f}]")
+            self.get_logger().info(f"Direction vector: [{direction_vector[0]:.2f}, {direction_vector[1]:.2f}, {direction_vector[2]:.2f}]")
             # self.get_logger().info(f"Theoretical DOA angle: {theoretical_angle:.1f}°")
             
             
@@ -266,7 +269,6 @@ class GeometryPlotter(Node):
                     error = 360 - error  # 处理角度环绕
                 self.get_logger().info(f"DOA estimation error: {error:.1f}° (estimated: {doa_estimates[0]:.1f}°, theoretical: {theoretical_angle:.1f}°)")
         
-        self.get_logger().info(f"-------------------------")
 
         # 记录无人机当前姿态
         if "pose" in self.pose_dict and self.pose_dict["pose"]["index"] >= 0:

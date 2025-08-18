@@ -8,7 +8,11 @@ source /opt/ros/galactic/setup.bash
 # cd /root/audioROS_ws
 
 # 清理之前的编译文件（可选）
-# rm -rf build install log
+rm -rf build install log
+
+# 清理可能的缓存
+rm -rf ~/.colcon_cache 2>/dev/null || true
+
 
 # 编译所有需要的包
 echo "Building audio_interfaces package..."
@@ -17,8 +21,8 @@ colcon build --packages-select audio_interfaces --cmake-args -DCMAKE_BUILD_TYPE=
 echo "Building all remaining packages..."
 colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 
-echo "Building symlinks-install..."
-colcon build --symlink-install
+# echo "Building symlinks-install..."
+# colcon build --symlink-install
 
 echo "Building audio_bringup package..."
 colcon build --packages-select audio_bringup --cmake-args -DCMAKE_BUILD_TYPE=Release

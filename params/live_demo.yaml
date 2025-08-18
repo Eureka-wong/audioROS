@@ -1,12 +1,35 @@
-gateway:
-  ros__parameters:
-    window_type: 2 # flattop
-    bin_selection: 5 # one sweep = one buffer
+# live_demo.yaml - 模拟飞行演示配置
+# 使用 crazyflie, linear_pose_publisher, processor 进行模拟
+
+# 注释掉不使用的gateway配置
+# gateway:
+#   ros__parameters:
+#     window_type: 2 # flattop
+#     bin_selection: 5 # one sweep = one buffer
+
+# # 音频仿真节点配置
+# crazyflie:
+#   ros__parameters:
+#     buzzer_freq: 3000
+#     speaker_type: "none"  # 确保外部扬声器静音
+
+# # 音频处理器配置  
+# processor:
+#   ros__parameters:
+#     min_freq: 2800
+#     max_freq: 3200  # 匹配3kHz蜂鸣器
+
+# # 线性位置发布器配置
+# linear_pose_publisher:
+#   ros__parameters:
+#     # 可以在这里添加移动参数
+
 wall_detection:
   ros__parameters:
     mode: 2 # 0: FSLICE, 1: DSLICE # 2: BLIND
-    drone: 2 # 0: none, 1: buzzer, 2: flying
+    drone: 0 # 0: none, 1: buzzer, 2: flying
+
 launch:
   ros__parameters:
     log_level: "warn"
-    bag_record_root: "datasets/2022_01_27_demo/test"
+    bag_record_root: "datasets/2025_08_15_demo/test"

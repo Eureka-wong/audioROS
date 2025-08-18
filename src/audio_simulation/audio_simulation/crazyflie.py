@@ -51,9 +51,9 @@ class State(Enum):
 
 
 MAX_TIMESTAMP = 2 ** 32 - 1  # max value of uint32
-NUM_REFLECTIONS = 1  # number of reflections to consider in pyroomacoustis.
+NUM_REFLECTIONS = 4  # number of reflections to consider in pyroomacoustis.
 DIM = 2  # dimension of simulation
-DURATION_SEC = 20  # duration of simulated audio signals
+DURATION_SEC = 150  # duration of simulated audio signals
 LOOP = True  # flag for looping the signal after reaching the end
 NOISE = (
     1e-2  # white noise to add on signals (variance squared), set to None for no effect
@@ -75,19 +75,33 @@ def get_source_signal(source_type, source_freq):
 
 def create_room(speaker_position, buzzer_position, mic_array):
     """
-    Create a shoe box room with two sources:
-    - source 0: external sound source
-    - source 1: buzzer sound source
+    Create a shoe box room with sources optimized for echo-based localization:
+    - source 0: external sound source (disabled for echo localization)
+    - source 1: buzzer sound source (for echo generation)
     """
-    assert speaker_position.ndim == 1
+    # Handle case where speaker_position is None
+    if speaker_position is not None:
+        assert speaker_position.ndim == 1
     assert buzzer_position.ndim == 2
     assert mic_array.ndim == 2
     assert mic_array.shape[1] in (2, 3), f"{mic_array.shape}"
 
+    # 设置墙壁吸收系数，较低的值意味着更多反射，有利于回声定位
+    # 0.1 表示墙壁吸收10%的声能，反射90%
+    # 对于2D房间，需要指定east, west, north, south四面墙
+    absorption_coeffs = {
+        'east': 0.1,    # 东墙
+        'west': 0.1,    # 西墙  
+        'north': 0.1,   # 北墙
+        'south': 0.1    # 南墙
+    }
+    
     pyroom = pra.ShoeBox(
-        ROOM_DIM[:DIM], fs=FS, max_order=NUM_REFLECTIONS, sigma2_awgn=NOISE
+        ROOM_DIM[:DIM], fs=FS, max_order=NUM_REFLECTIONS, sigma2_awgn=NOISE, absorption=absorption_coeffs
     )
-    pyroom.add_source(speaker_position[:DIM])  #
+    # Only add external speaker source if position is provided
+    if speaker_position is not None:
+        pyroom.add_source(speaker_position[:DIM])  #
     pyroom.add_source(buzzer_position[0, :DIM])  # 1 x 2
     pyroom.add_microphone_array(mic_array.T[:DIM, :])  # dim x n_mics
     return pyroom
@@ -95,16 +109,15 @@ def create_room(speaker_position, buzzer_position, mic_array):
 
 class CrazyflieSimulation(NodeWithParams):
     PARAMS_DICT = {
-        "speaker_type": "random",
-        "speaker_freq": 4000,
-        "buzzer_type": "mono",
-        # "buzzer_freq": 4000,
-        "buzzer_freq": 0,  # 0 means no buzzer
+        "speaker_type": "none",  # 静音外部声源
+        "speaker_freq": 0,       # 外部声源频率设为0
+        "buzzer_type": "mono",   # 蜂鸣器使用单频信号
+        "buzzer_freq": 3000,     # 蜂鸣器频率3kHz，用于回声定位
     }
     # constants
     mic_positions = np.array(MIC_POSITIONS)  # 4 x 2
     buzzer_position = np.array(BUZZER_POSITION)  # 1 x 2
-    speaker_position_global = np.array(SPEAKER_POSITION)  # 3,
+    speaker_position_global = np.array(SPEAKER_POSITION) if SPEAKER_POSITION is not None else None
     
     def __init__(self):
         super().__init__("audio_simulation")
@@ -256,12 +269,22 @@ class CrazyflieSimulation(NodeWithParams):
         """
         from audio_simulation.pyroom_helpers import simulate_truncated
 
-        self.room.sources[0].signal = self.speaker_signal
-        self.room.sources[1].signal = self.buzzer_signal
+        # Assign signals to sources based on whether external speaker exists
+        if CrazyflieSimulation.speaker_position_global is not None:
+            self.room.sources[0].signal = self.speaker_signal
+            self.room.sources[1].signal = self.buzzer_signal
+        else:
+            # Only buzzer source exists (index 0)
+            self.room.sources[0].signal = self.buzzer_signal
 
-        assert (
-            len(self.speaker_signal) >= self.simulation_idx + self.n_buffers * N_BUFFER
+        # Use speaker signal length if it exists, otherwise buzzer signal length
+        signal_length = (
+            len(self.speaker_signal) 
+            if CrazyflieSimulation.speaker_position_global is not None 
+            else len(self.buzzer_signal)
         )
+        assert signal_length >= self.simulation_idx + self.n_buffers * N_BUFFER
+        
         self.mic_signals = simulate_truncated(
             self.room, self.simulation_idx, self.n_buffers * N_BUFFER
         )
@@ -269,13 +292,24 @@ class CrazyflieSimulation(NodeWithParams):
 
     def update_source_signals(self):
         print(self.current_params)
-        self.speaker_signal = get_source_signal(
-            self.current_params["speaker_type"], self.current_params["speaker_freq"]
-        )
+        # Generate speaker signal if external speaker exists
+        if CrazyflieSimulation.speaker_position_global is not None:
+            self.speaker_signal = get_source_signal(
+                self.current_params["speaker_type"], self.current_params["speaker_freq"]
+            )
+        else:
+            # Create empty speaker signal if no external speaker
+            self.speaker_signal = np.zeros(int(ceil(FS * DURATION_SEC)))
+            
         self.buzzer_signal = get_source_signal(
             self.current_params["buzzer_type"], self.current_params["buzzer_freq"]
         )
-        self.end_idx = min(len(self.buzzer_signal), len(self.speaker_signal))
+        
+        # Set end index based on available signals
+        if CrazyflieSimulation.speaker_position_global is not None:
+            self.end_idx = min(len(self.buzzer_signal), len(self.speaker_signal))
+        else:
+            self.end_idx = len(self.buzzer_signal)
 
     def update_positions(self):
         mic_positions_global = global_positions_from_2d(

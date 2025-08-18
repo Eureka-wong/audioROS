@@ -80,3 +80,4 @@ lost+found/
 .Trash*
 env/
 venv/
+README.md

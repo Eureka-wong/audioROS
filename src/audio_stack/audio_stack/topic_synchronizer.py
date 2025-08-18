@@ -38,15 +38,13 @@ def get_time(msg):
 
 
 class TopicSynchronizer(object):
-# class TopicSynchronizer(Node):
+
     """ Helper class to keep track of the latest message on a given topic within an admissible delay. """
 
     def __init__(self, allowed_lag_ms=ALLOWED_LAG_MS, logger=None, n_buffer=N_BUFFER):
-        # super().__init__("topic_synchronizer")
         self.allowed_lag_ms = allowed_lag_ms
         self.latest_message = None
         self.logger = logger
-        # self.node = node
         self.n_buffer = n_buffer
         if n_buffer > 1:
             self.buffer = [None] * n_buffer
@@ -118,7 +116,7 @@ class TopicSynchronizer(object):
             logger.warn(f"All times currently in buffer: {self.get_times()}")
         return None
 
-    def listener_callback(self, msg):
+    def listener_callback(self, msg):        
         self.latest_message = msg
 
         if self.n_buffer > 1:

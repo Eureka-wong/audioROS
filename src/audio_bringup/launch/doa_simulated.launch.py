@@ -11,8 +11,9 @@ import launch
 
 from audio_bringup.helpers import get_launch_description
 
-LOG_LEVEL = "warn"
-# LOG_LEVEL = "info"
+# LOG_LEVEL = "warn"
+LOG_LEVEL = "info"
+# LOG_LEVEL = "debug"  # for debugging
 
 """
 node_config = {

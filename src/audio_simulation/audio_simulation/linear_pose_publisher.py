@@ -3,6 +3,7 @@ linear_pose_publisher.py: Publish linear translational movement of Crazyflie ins
 """
 
 import time
+import os
 
 import numpy as np
 import rclpy
@@ -25,7 +26,7 @@ from audio_simulation.geometry import (
 
 VELOCITY = np.array([0.04, 0.0, 0.0])  # m/s, in drone coordinates
 # 修改为x方向前进，匹配wall_detection的前向运动
-EPS = 0.15  # m, safety margin from walls
+EPS = 0.10  # m, safety margin from walls
 MAX_Y = None
 
 
@@ -60,47 +61,88 @@ class LinearPosePublisher(Node):
         self.start_time = time.time()
         self.timestamp_counter = 0
 
+        # # 添加停止标志
+        # self.should_stop = False
+
     def get_time_ms(self):
         # 使用简单的计数器方法，每次调用递增
         self.timestamp_counter += int(self.timer_period * 1000)  # 转换为毫秒
         # 确保在uint32范围内
         return self.timestamp_counter % (2**32)
 
+    def shutdown_system(self, reason="boundary reached"):
+        """关闭整个系统"""
+        self.get_logger().warn(f"Shutting down system: {reason}")
+        self.get_logger().warn(f"Final position: X={self.position[0]:.3f}, Y={self.position[1]:.3f}, Z={self.position[2]:.3f}")
+        
+        # 设置停止标志
+        self.should_stop = True
+        
+        # 停止定时器
+        if hasattr(self, 'timer'):
+            self.timer.cancel()
+        
+         # 关闭ROS节点
+        try:
+            self.get_logger().info("Destroying node...")
+            self.destroy_node()
+            
+            # 关闭整个ROS系统
+            rclpy.shutdown()
+            
+            # 强制退出程序
+            self.get_logger().info("Exiting program...")
+            os._exit(0)
+            
+        except Exception as e:
+            self.get_logger().error(f"Error during shutdown: {e}")
+            # 强制终止
+            os._exit(1)
+
     def timer_callback(self):
+        # if self.should_stop:
+        #     return
+        
         delta = self.rot.apply(self.timer_period * self.constant_velocity)
         new_position = self.position + delta
 
         # if we hit the wall in x-direction, revert x-direction  
         if (new_position[0] > ROOM_DIM[0] - EPS) or (new_position[0] < EPS):
             self.get_logger().warn("touched wall in x-direction, turn direction")
+            # self.get_logger().warn("touched wall in x-direction, stop moving!")
             self.constant_velocity[0] = -self.constant_velocity[0]
-            # 重新计算新位置，使用反向速度
-            delta = self.rot.apply(self.timer_period * self.constant_velocity)
-            new_position = self.position + delta
+            new_position = self.position
+            # self.shutdown_system("Reached x boundary, shut down system")
+            # # 重新计算新位置，使用反向速度
+            # delta = self.rot.apply(self.timer_period * self.constant_velocity)
+            # new_position = self.position + delta
 
         # if we hit the wall, revert y-direction
         if (new_position[1] > ROOM_DIM[1] - EPS) or (new_position[1] < EPS):
             self.get_logger().warn("touched wall, turn direction")
             self.constant_velocity[1] = -self.constant_velocity[1]
-            # 重新计算新位置，使用反向速度
-            delta = self.rot.apply(self.timer_period * self.constant_velocity)
-            new_position = self.position + delta
+            new_position = self.position
+            # # 重新计算新位置，使用反向速度
+            # delta = self.rot.apply(self.timer_period * self.constant_velocity)
+            # new_position = self.position + delta
 
         # if we hit the ceiling/floor, revert z-direction
         if (new_position[2] > ROOM_DIM[2] - EPS) or (new_position[2] < EPS):
             self.get_logger().warn("touched ceiling/floor, turn direction")
             self.constant_velocity[2] = -self.constant_velocity[2]
-            # 重新计算新位置，使用反向速度
-            delta = self.rot.apply(self.timer_period * self.constant_velocity)
-            new_position = self.position + delta
+            new_position = self.position
+            # # 重新计算新位置，使用反向速度
+            # delta = self.rot.apply(self.timer_period * self.constant_velocity)
+            # new_position = self.position + delta
             
         # if we reached max_y, revert direction.
         if (self.max_y is not None) and (new_position[1] > self.max_y):
             self.get_logger().warn(f"reached {self.max_y}, turn direction")
             self.constant_velocity[1] = -self.constant_velocity[1]
-            # 重新计算新位置，使用反向速度
-            delta = self.rot.apply(self.timer_period * self.constant_velocity)
-            new_position = self.position + delta
+            new_position = self.position
+            # # 重新计算新位置，使用反向速度
+            # delta = self.rot.apply(self.timer_period * self.constant_velocity)
+            # new_position = self.position + delta
 
         self.position = new_position
         quat = self.rot.as_quat()
@@ -108,7 +150,6 @@ class LinearPosePublisher(Node):
         timestamp = self.get_time_ms()
         msg = create_pose_message_from_arrays(quat, self.position, timestamp=timestamp)
         self.publisher_pose.publish(msg)
-        self.get_logger().info(f"Pose has been published at time {timestamp}")
 
         # Publish raw pose message
         yaw_deg = self.rot.as_euler("zyx", degrees=True)[0]  # 提取z轴旋转角度(yaw)

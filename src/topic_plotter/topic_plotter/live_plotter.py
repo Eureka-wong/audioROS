@@ -218,7 +218,7 @@ class LivePlotter(object):
     ):
 
         """ Plot data_matrix as a heatmap. """
-
+        
         # we round vmax and vmin so we don't have to recretae colorbars all the time for minor changes.
         if vmax is None:
             vmax = np.max(data_matrix)

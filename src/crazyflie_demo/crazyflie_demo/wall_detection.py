@@ -2,8 +2,10 @@ from copy import deepcopy
 from enum import Enum
 import sys
 import time
+import os
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 import rclpy
 from rclpy.action import ActionClient
@@ -39,7 +41,8 @@ PUBLISH_MOVING = True
 PUBLISH_RAW = False
 
 # corresponds to discretization "fine":
-DISTANCES_CM = np.arange(7, 80, step=2)
+# DISTANCES_CM = np.arange(7, 80, step=2)
+DISTANCES_CM = np.arange(0, 200, step=5)
 ANGLES_DEG = np.arange(360, step=1)
 
 WALL_ANGLE_DEG = 90  # for raw distribution only
@@ -158,6 +161,7 @@ class WallDetection(NodeWithParams):
     N_PARTICLES = 400
 
     def __init__(self, python_only=False, estimator="moving", angles_deg=ANGLES_DEG):
+        np.random.seed(42)
         if not python_only:
             print("initializing ros stuff")
             super().__init__("wall_detection")
@@ -250,6 +254,27 @@ class WallDetection(NodeWithParams):
         # start main timer
         self.start_forward = None
 
+        # Initialize plotting data storage
+        self.plot_data = {
+            'x_positions': [],
+            'predicted_distances': [],
+            'real_distances': [],
+            'confidences': [],
+            'errors': [],
+            'signal_strengths': [],
+            'timestamps': [],
+            'eps_experiment_data': []  # 新增EPS实验数据 - 存储字典列表
+        }
+        
+        # EPS敏感性实验配置
+        self.eps_experiment_config = {
+            'enabled': True,  # 是否启用EPS实验
+            'current_eps': None,  # 当前EPS值（从环境变量或参数获取）
+            'experiment_id': None,  # 实验ID
+            'start_time': None,  # 实验开始时间
+        }
+
+       
     def flight_check(self, position_cm=None):
         """
         drone=0: analyzing bag file, should be "flying" to do analysis
@@ -264,15 +289,15 @@ class WallDetection(NodeWithParams):
             return False
         return True
 
-    def add_to_calib(self, magnitudes):
+    def add_to_calib(self, magnitudes, verbose=False):
         if self.CALIBRATION == "fixed":
             if self.calibration_data is None:
-                self.add_to_calib_data(magnitudes)
+                self.add_to_calib_data(magnitudes, verbose=verbose)
             elif self.calibration_data.shape[2] < self.N_CALIBRATION:
-                self.add_to_calib_data(magnitudes)
+                self.add_to_calib_data(magnitudes, verbose=verbose)
             return
         elif self.CALIBRATION == "window":
-            self.add_to_calib_data(magnitudes, verbose=False)
+            self.add_to_calib_data(magnitudes, verbose=verbose)
         elif self.CALIBRATION == "iir":
             self.add_to_calib_iir(magnitudes)
 
@@ -311,7 +336,6 @@ class WallDetection(NodeWithParams):
 
             self.calibration[~valid] = magnitudes[~valid]
             self.calibrationsq[~valid] = magnitudes[~valid] ** 2
-        self.calibration_count += 1
 
     def calibrate(self, magnitudes):
         """Note that invalid values are masked (set to zero)."""
@@ -519,6 +543,7 @@ class WallDetection(NodeWithParams):
         timestamp = msg_pose.timestamp
 
         msg_signals = self.signals_synch.get_latest_message(timestamp, verbose=False)
+        # self.logger.info(f"msg_signals: {msg_signals}")
         if msg_signals is not None:
             # self.logger.warn(
             #    f"for pose {timestamp}, using audio {msg_signals.timestamp}. lag: {msg_signals.timestamp - timestamp}ms"
@@ -530,7 +555,7 @@ class WallDetection(NodeWithParams):
                 return
 
             __, signals_f, freqs = read_signals_freq_message(msg_signals)
-            magnitudes = np.abs(signals_f).T  # 4 x 20
+            magnitudes = np.abs(signals_f).T  # 4 x 2
 
             if self.state == State.WAIT_ANGLE:
                 data = self.data_collector.get_current_distance_slice(
@@ -585,19 +610,55 @@ class WallDetection(NodeWithParams):
                 (
                     distances_cm,
                     probabilities,
+                    angle_idx,
                     *_,
-                ) = self.estimator.get_distributions(simplify_angles=SIMPLIFY_ANGLES)
+                ) = self.estimator.get_distributions(simplify_angles=self.SIMPLIFY_ANGLES)
                 # self.logger.warn(f"{timestamp}, after adding {r_world[0] * 1e2:.2f}, {yaw:.1f}: {probabilities[2]}")
-
                 # TODO(FD) to save time, we could consider only publishing the distribution
                 # if it contains viable distance estimates.
                 msg = create_distribution_message(
                     distances_cm, probabilities, timestamp
                 )
                 self.publisher_distribution_moving.publish(msg)
+                
+                # 找到概率最大值及对应的距离
+                max_prob_idx = np.argmax(probabilities)
+                max_probability = probabilities[max_prob_idx]
+                corresponding_distance = distances_cm[max_prob_idx]
+                theoretical_distance = 1000.0 - position_cm[0]
+                signal_strength = np.mean(magnitudes_calib, axis=0)
+
+                # self.logger.warn(f"Max probability: {max_probability:.6f} at distance: {corresponding_distance:.1f}cm ({corresponding_distance/100:.3f}m)")
+                # self.logger.warn(f"real distance:{theoretical_distance:.1f}cm")
+
+                # 更新绘图数据
+                error = abs(corresponding_distance - theoretical_distance)
+                self.plot_data['x_positions'].append(position_cm[0] / 100)  # 转换为米
+                self.plot_data['predicted_distances'].append(corresponding_distance)
+                self.plot_data['real_distances'].append(theoretical_distance)
+                self.plot_data['confidences'].append(max_probability)
+                self.plot_data['errors'].append(error)
+                self.plot_data['signal_strengths'].append(signal_strength)
+                self.plot_data['timestamps'].append(timestamp)
+                '''
+                # EPS敏感性实验数据记录
+                self.record_eps_experiment_data(
+                    position_cm, max_probability, corresponding_distance, 
+                    theoretical_distance, error, signal_strength, timestamp
+                )
+
+                # 每5个数据点更新一次图像
+                if len(self.plot_data['x_positions']) % 3 == 0:
+                    # pass
+                    self.plot_estimate_error()
+                # if self.eps_experiment_config['enabled']:
+                #     self.update_eps_experiment_analysis()
+                    # self.plot_eps_probability_distributions()
+                '''
                 self.logger.info(
                     f"Published moving-average distribution with timestamp {timestamp}"
                 )
+                
             self.new_sample_to_treat = True
 
         else:
@@ -691,9 +752,16 @@ class WallDetection(NodeWithParams):
             if self.calibration_count < self.N_CALIBRATION:
                 return State.WAIT_CALIB
 
-            self.calibration = np.nanmedian(self.calibration_data, axis=2)
-            self.calibration_std = np.nanstd(self.calibration_data, axis=2)
-            self.calibration_std[self.calibration_std == 0] = np.nan
+            # For IIR calibration, we don't use calibration_data
+            if self.CALIBRATION == "iir":
+                # calibration and calibration_std are already computed in add_to_calib_iir
+                pass
+            else:
+                # For fixed and window calibration modes
+                if self.calibration_data is not None:
+                    self.calibration = np.nanmedian(self.calibration_data, axis=2)
+                    self.calibration_std = np.nanstd(self.calibration_data, axis=2)
+                    self.calibration_std[self.calibration_std == 0] = np.nan
 
             self.logger.info("done calibrating")
             self.start_forward = time.time()
@@ -830,6 +898,281 @@ class WallDetection(NodeWithParams):
                 self.logger.warn(f"Avoiding detected wall!")
             self.already_asking = False
 
+    def plot_estimate_error(self):
+        """更新误差图像，显示预测值与真实值的差异"""
+        try:
+            if len(self.plot_data['x_positions']) < 2:
+                return
+                
+            # 创建图像
+            fig, ax = plt.subplots(figsize=(12, 10))
+
+            # 误差vs真实距离
+            dis = np.array(self.plot_data['real_distances'])
+            errors = np.array(self.plot_data['errors'])
+            confidences = np.array(self.plot_data['confidences'])
+        
+            # 用颜色表示置信度
+            scatter = ax.scatter(dis, errors, c=confidences, cmap='viridis',
+                                alpha=0.7, s=60)
+            
+            # 获取当前EPS值
+            current_eps = self.get_current_eps_value()
+            
+            # 计算统计信息
+            mean_error = np.mean(np.abs(errors))
+            std_error = np.std(errors)
+            mean_confidence = np.mean(confidences)
+            
+            ax.set_xlabel('distance (cm)')
+            ax.set_ylabel('error (cm)')
+            # 更新标题包含EPS信息
+            ax.set_title(f'Error vs Distance - EPS: {current_eps:.3f}m', fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            ax.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+
+            # 添加颜色条
+            cbar = plt.colorbar(scatter, ax=ax)
+            cbar.set_label('confidence (probability)')
+
+            # 保存图像
+            os.makedirs("AUDIOROS/8.12/test4/x=8.0", exist_ok=True)
+            plt.savefig("AUDIOROS/8.12/test4/x=8.0/wall_detection_error_analysis-5.png", dpi=150, bbox_inches='tight')
+            plt.close()
+            
+        except Exception as e:
+            print(f"绘图失败: {e}")
+
+    def plot_signal_strength(self):
+        """绘制信号强度变化图像"""
+        try:
+            if len(self.plot_data['x_positions']) < 2:
+                return
+                
+            # 创建图像
+            fig, ax = plt.subplots(figsize=(12, 6))
+
+            signal_strengths = np.array(self.plot_data['signal_strengths'])
+            real_distances = np.array(self.plot_data['real_distances'])
+            
+            # 第二个子图：信号强度vs真实距离
+            ax.plot(real_distances/100, signal_strengths, 'r-', linewidth=2, marker='s', markersize=4)
+            ax.set_xlabel('真实距离 (m)')
+            ax.set_ylabel('信号强度')
+            ax.set_title('信号强度 vs 真实墙面距离')
+            ax.grid(True, alpha=0.3)
+            
+            # 添加统计信息
+            mean_strength = np.mean(signal_strengths)
+            std_strength = np.std(signal_strengths)
+            min_strength = np.min(signal_strengths)
+            max_strength = np.max(signal_strengths)
+            
+            # 在图上添加统计信息
+            stats_text = f'均值: {mean_strength:.4f}\n标准差: {std_strength:.4f}\n最小值: {min_strength:.4f}\n最大值: {max_strength:.4f}'
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            plt.tight_layout()
+            
+            # 保存图像
+            os.makedirs("AUDIOROS", exist_ok=True)
+            plt.savefig("AUDIOROS/signal_strength_analysis-3.png", dpi=150, bbox_inches='tight')
+            plt.close()
+            
+        except Exception as e:
+            print(f"信号强度绘图失败: {e}")
+
+    def get_current_eps_value(self):
+        """从linear_pose_publisher.py文件中读取当前EPS值"""
+        try:
+            import os
+            import re
+            # 获取项目根目录
+            # current_dir = os.path.dirname(os.path.abspath(__file__))
+            # project_root = os.path.join(current_dir, '..', '..', '..')
+            # eps_file = os.path.join(project_root, 'src', 'audio_simulation', 'audio_simulation', 'linear_pose_publisher.py')
+            project_root = "/audioROS"
+            eps_file = os.path.join(project_root, 'src', 'audio_simulation', 'audio_simulation', 'linear_pose_publisher.py')
+
+            with open(eps_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                eps_match = re.search(r'EPS\s*=\s*([\d.]+)', content)
+                if eps_match:
+                    return float(eps_match.group(1))
+        except Exception as e:
+            self.logger.warn(f"Could not read EPS value: {e}")
+        
+        return 0.20  # 默认值
+
+    def record_eps_experiment_data(self, position_cm, max_probability, 
+                                 corresponding_distance, theoretical_distance, 
+                                 error, signal_strength, timestamp):
+        """记录EPS敏感性实验数据"""
+        if not self.eps_experiment_config['enabled']:
+            return
+            
+        # 获取当前EPS值
+        current_eps = self.get_current_eps_value()
+        
+        data_point = {
+            'eps_value': current_eps,
+            'x_position': position_cm[0] / 100,  # 转换为米
+            'distance_to_wall': theoretical_distance / 100,  # 转换为米
+            'predicted_distance': corresponding_distance / 100,  # 转换为米
+            'confidence': max_probability,
+            'error': error / 100,  # 转换为米
+            'signal_strength': signal_strength,
+            'timestamp': timestamp
+        }
+        
+        self.plot_data['eps_experiment_data'].append(data_point)
+        
+        # 更新统计信息
+        if 'total_samples' not in self.eps_experiment_config:
+            self.eps_experiment_config['total_samples'] = 0
+            self.eps_experiment_config['best_confidence'] = 0.0
+            self.eps_experiment_config['best_confidence_eps'] = current_eps
+            
+        self.eps_experiment_config['total_samples'] += 1
+        if max_probability > self.eps_experiment_config['best_confidence']:
+            self.eps_experiment_config['best_confidence'] = max_probability
+            self.eps_experiment_config['best_confidence_eps'] = current_eps
+
+        self.logger.warn(f"EPS Experiment: eps={current_eps:.3f}, conf={max_probability:.6f}, error={error:.1f}cm, real distance={theoretical_distance:.1f}cm")
+
+    def plot_eps_probability_distributions(self):
+        """绘制不同EPS值下的概率分布图像"""
+        if not self.eps_experiment_config['enabled'] or len(self.plot_data['eps_experiment_data']) < 30:
+            self.logger.warn("Insufficient EPS experiment data for probability distribution plotting")
+            return
+            
+        data = self.plot_data['eps_experiment_data']
+        
+        # 按EPS值分组
+        eps_groups = {}
+        for point in data:
+            eps = point['eps_value']
+            if eps not in eps_groups:
+                eps_groups[eps] = {
+                    'confidences': [],
+                    'distances': [],
+                    'predicted_distances': [],
+                    'errors': []
+                }
+            eps_groups[eps]['confidences'].append(point['confidence'])
+            eps_groups[eps]['distances'].append(point['distance_to_wall'])
+            eps_groups[eps]['predicted_distances'].append(point['predicted_distance'])
+            eps_groups[eps]['errors'].append(point['error'])
+        
+        # 过滤掉数据不足的EPS组
+        eps_groups = {eps: data for eps, data in eps_groups.items() if len(data['confidences']) >= 5}
+        
+        if len(eps_groups) == 0:
+            self.logger.warn("No EPS groups with sufficient data for plotting")
+            return
+            
+        # 创建图像
+        n_eps = len(eps_groups)
+        fig = plt.figure(figsize=(20, 15))
+        
+        # 排序EPS值
+        sorted_eps = sorted(eps_groups.keys())
+        
+        # 1. 置信度分布直方图
+        for i, eps in enumerate(sorted_eps):
+            ax = plt.subplot(3, n_eps, i + 1)
+            confidences = eps_groups[eps]['confidences']
+            
+            # 绘制直方图
+            n_bins = min(20, max(5, len(confidences) // 3))
+            counts, bins, patches = ax.hist(confidences, bins=n_bins, alpha=0.7, 
+                                          color=plt.cm.viridis(i / len(sorted_eps)), 
+                                          edgecolor='black', linewidth=0.5)
+            
+            # 添加统计线
+            mean_conf = np.mean(confidences)
+            ax.axvline(mean_conf, color='red', linestyle='--', linewidth=2, 
+                      label=f'Mean: {mean_conf:.4f}')
+            
+            ax.set_title(f'EPS={eps:.3f}m\nConfidence Distribution\n(n={len(confidences)})', fontsize=10)
+            ax.set_xlabel('Confidence', fontsize=9)
+            ax.set_ylabel('Frequency', fontsize=9)
+            ax.legend(fontsize=8)
+            ax.grid(True, alpha=0.3)
+        
+        # 2. 预测距离vs真实距离散点图
+        for i, eps in enumerate(sorted_eps):
+            ax = plt.subplot(3, n_eps, n_eps + i + 1)
+            distances = eps_groups[eps]['distances']
+            predicted = eps_groups[eps]['predicted_distances']
+            confidences = eps_groups[eps]['confidences']
+            
+            # 使用置信度作为颜色映射
+            scatter = ax.scatter(distances, predicted, c=confidences, 
+                               cmap='viridis', alpha=0.6, s=30)
+            
+            # 添加理想预测线 (y=x)
+            min_dist = min(min(distances), min(predicted))
+            max_dist = max(max(distances), max(predicted))
+            ax.plot([min_dist, max_dist], [min_dist, max_dist], 
+                   'r--', linewidth=2, alpha=0.8, label='Perfect Prediction')
+            
+            ax.set_title(f'EPS={eps:.3f}m\nPrediction Accuracy', fontsize=10)
+            ax.set_xlabel('True Distance (m)', fontsize=9)
+            ax.set_ylabel('Predicted Distance (m)', fontsize=9)
+            ax.legend(fontsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            # 添加颜色条
+            cbar = plt.colorbar(scatter, ax=ax)
+            cbar.set_label('Confidence', fontsize=8)
+        
+        # 3. 误差分布箱线图
+        ax = plt.subplot(3, 1, 3)
+        error_data = []
+        eps_labels = []
+        
+        for eps in sorted_eps:
+            errors = eps_groups[eps]['errors']
+            error_data.append(errors)
+            eps_labels.append(f'EPS={eps:.3f}m\n(n={len(errors)})')
+        
+        box_plot = ax.boxplot(error_data, labels=eps_labels, patch_artist=True)
+        
+        # 为每个箱线图设置不同颜色
+        colors = plt.cm.viridis(np.linspace(0, 1, len(sorted_eps)))
+        for patch, color in zip(box_plot['boxes'], colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        
+        ax.set_title('Prediction Error Distribution Across Different EPS Values', fontsize=12)
+        ax.set_ylabel('Prediction Error (m)', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        
+        # 添加统计信息文本
+        stats_text = "Statistical Summary:\n"
+        for eps in sorted_eps:
+            errors = eps_groups[eps]['errors']
+            confidences = eps_groups[eps]['confidences']
+            stats_text += f"EPS {eps:.3f}: Mean Error={np.mean(errors):.3f}m, Mean Conf={np.mean(confidences):.4f}\n"
+        
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                verticalalignment='top', fontsize=9,
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+        
+        plt.tight_layout()
+        
+        # 保存图像
+        import os
+        os.makedirs("AUDIOROS", exist_ok=True)
+        filename = "AUDIOROS/eps_probability_distributions.png"
+        plt.savefig(filename, dpi=150, bbox_inches='tight')
+        plt.show()
+        
+        self.logger.warn(f"EPS probability distribution plot saved to {filename}")
+        
+    
     def print_params(self):
         print("calibration:", self.CALIBRATION)
         print("n_calibration:", self.N_CALIBRATION)
@@ -843,6 +1186,54 @@ class WallDetection(NodeWithParams):
         print("bad freq ranges epuck:", self.BAD_FREQ_RANGES_EPUCK)
         print("n_particles:", self.N_PARTICLES)
 
+    def update_eps_experiment_analysis(self):
+        """更新EPS敏感性实验分析"""
+        if not self.eps_experiment_config['enabled'] or len(self.plot_data['eps_experiment_data']) < 1:
+            self.logger.warn("EPS sensitivity analysis not enabled or insufficient data.")
+            return
+        self.logger.warn("Updating EPS sensitivity analysis...")   
+        data = self.plot_data['eps_experiment_data']
+        
+        # 按EPS值分组分析
+        eps_groups = {}
+        for point in data:
+            eps = point['eps_value']
+            if eps not in eps_groups:
+                eps_groups[eps] = {
+                    'confidences': [],
+                    'errors': [],
+                    'distances': [],
+                    'signal_strengths': []
+                }
+            eps_groups[eps]['confidences'].append(point['confidence'])
+            eps_groups[eps]['errors'].append(point['error'])
+            eps_groups[eps]['distances'].append(point['distance_to_wall'])
+            eps_groups[eps]['signal_strengths'].append(point['signal_strength'])
+        
+        # 计算统计信息
+        analysis_results = {}
+        for eps, group_data in eps_groups.items():
+            if len(group_data['confidences']) > 0:
+                analysis_results[eps] = {
+                    'mean_confidence': np.mean(group_data['confidences']),
+                    'mean_error': np.mean(group_data['errors']),
+                    'std_error': np.std(group_data['errors']),
+                    'sample_count': len(group_data['confidences']),
+                    'min_distance': np.min(group_data['distances']),
+                    'max_distance': np.max(group_data['distances']),
+                }
+        
+        # 更新配置中的分析结果
+        self.eps_experiment_config['analysis_results'] = analysis_results
+        
+        # 打印当前分析结果
+        self.logger.info("=== EPS Sensitivity Analysis Update ===")
+        for eps, results in analysis_results.items():
+            self.logger.info(f"EPS {eps:.3f}: conf={results['mean_confidence']:.6f}, "
+                           f"error={results['mean_error']:.3f}±{results['std_error']:.3f}m, "
+                           f"samples={results['sample_count']}, range={results['min_distance']:.2f}-{results['max_distance']:.2f}m")
+
+
 def main(args=None):
     rclpy.init(args=args)
     action_client = WallDetection()
@@ -850,7 +1241,9 @@ def main(args=None):
         rclpy.spin(action_client)
     except Exception as e:
         print(e)
-        raise e
+        # print("程序结束，保存最终误差分析图...")
+        # 保存最终的误差分析图
+        # action_client.plot_estimate_error()
         action_client.set_buzzer(0)
         action_client.land()
         rclpy.shutdown()

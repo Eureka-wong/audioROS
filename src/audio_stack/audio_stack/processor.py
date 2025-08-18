@@ -93,9 +93,9 @@ class Processor(NodeWithParams):
     # set min_freq==max_freq to choose one frequency only.
     PARAMS_DICT = {
         "n_freqs": 32,
-        "min_freq": 100,
+        "min_freq": 2800,
         # "min_freq": 1000,
-        "max_freq": 8000,
+        "max_freq": 3200,
         # "max_freq": 5000,
         "delta_freq": 100,  # not used without thrust
         "filter_snr": 0,  # equivalent to filter_snr_enable
