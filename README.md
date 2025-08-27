@@ -55,11 +55,11 @@ Below are some visualization results
 
 2. Drone circular motion trail visualization
 * Motion trail-2D
-![circular motion trail 2D](AUDIOROS\SLAM_VIS_2\slam_0080.png)
+![circular motion trail 2D](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/SLAM_VIS_2/slam_0080.png)
 * Motion trail-3D
-![circular motion trail 3D](AUDIOROS\8.26\drone_trajectory.png)
+![circular motion trail 3D](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/8.26/drone_trajectory.png)
 * Error analysis
-![circular trail error](AUDIOROS\8.26\wall_detection_error_analysis-1.png)
+![circular trail error](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/8.26/wall_detection_error_analysis-1.png)
 
 ## References
 Please refer to the below publications for more information.
