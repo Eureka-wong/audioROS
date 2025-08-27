@@ -1,5 +1,8 @@
 # audioROS for Indoor Position Simulation
 This repository is built based on (https://github.com/LCAV/audioROS). Refer to the original repository for more detailed information about audioROS implementation.
+
+For contents in submodule [**crazyflie-audio**](https://github.com/lcav/crazyflie-audio/tree/30d2daf61ea80438f33e1ca4437e5160b30c5925) and [**gtsam**](https://github.com/borglab/gtsam), please click the links to get their respective source codes.
+
 This repository mainly focuses on simulating drone localization under controlled experimental conditions. 
 
 ## Installation
