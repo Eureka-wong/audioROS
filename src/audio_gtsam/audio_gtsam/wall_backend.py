@@ -31,12 +31,12 @@ USE_ISAM = True
 N_VELOCITY_ESTIMATE = 3  # how many points to use for velocity estimate
 DISTANCE_THRESHOLD_M = 0.2  # when to consider wall too close
 
-LIMIT_DISTANCE_CM = 20  # threshold for adding wall to factor graph
+LIMIT_DISTANCE_CM = 30  # threshold for adding wall to factor graph
 
 ESTIMATION_METHOD = "peak"
 
 
-PLOT_YAW_LENGTH = 0.1
+PLOT_YAW_LENGTH = 0.01
 ARROW_WIDTH = 0.02
 FIGSIZE = 5
 
@@ -205,9 +205,15 @@ class WallBackend(object):
         azimuth,
         elevation=0.0,
         plane_noise=None,
-        verbose=False,
+        verbose=True,
         logger=None,
     ):
+        def log_debug(msg):
+            if logger:
+                logger.warn(f"WallBackend: {msg}")
+            else:
+                print(f"WallBackend: {msg}")
+
         if self.need_to_update_results:
             self.get_results()
 
@@ -239,11 +245,10 @@ class WallBackend(object):
                 found_match = True
                 break
             # print(f"{plane_index} is not a match:", error)
-
         if not found_match:
             self.plane_index = self.plane_index_max + 1
             self.plane_index_max = self.plane_index
-            print("adding new plane", self.plane_index)
+            # print("adding new plane", self.plane_index)
         else:
             print("  adding to plane", self.plane_index)
 
@@ -254,6 +259,7 @@ class WallBackend(object):
         if verbose:
             azimuth = get_azimuth_angle(new_plane.normal().point3(), degrees=True)
             distance = new_plane.distance()
+            self.wall_info_texts[self.plane_index] = f"plane: {self.plane_index} and pose {self.pose_index}: {azimuth:.0f}deg, {distance:.2f}m"
             msg = f"add to plane {self.plane_index} and pose {self.pose_index}: {azimuth:.0f}deg, {distance:.2f}m"
             print(msg)
             if logger is not None:
@@ -297,7 +303,7 @@ class WallBackend(object):
 
         assert len(r_world) == 3, "Need to give 3d pose estimate!"
         current_pose = gtsam.Pose3(
-            r=gtsam.Rot3.Ypr(yaw, 0, 0), t=gtsam.Point3(*r_world)
+            r=gtsam.Rot3.Ypr(yaw, 0, 0), t=gtsam.Point3(*r_world) # 設定pitch=0, roll=0，觀測值
         )
         if (self.result is None) or not self.result.exists(X(self.pose_index)):
             initial_estimates.insert(X(self.pose_index), current_pose)
@@ -416,6 +422,13 @@ class WallBackend(object):
         logger=None,
         method=ESTIMATION_METHOD,
     ):
+        
+        def log_debug(msg):
+            if logger:
+                logger.warn(f"WallBackend: {msg}")
+            else:
+                print(f"WallBackend: {msg}")
+
         """ 
         Add plane factor from distance distributions, using angle ahead.
         """
@@ -427,6 +440,7 @@ class WallBackend(object):
 
         distance = distances[0]
         distance_std = distance_stds[0]
+        # log_debug(f"Distance estimate: {distance:.2f}m, std: {distance_std:.2f}m")
 
         if (distance is None) or (distance > limit_distance):
             return
@@ -459,6 +473,7 @@ class WallBackend(object):
             verbose=verbose,
             logger=logger,
         )
+        log_debug(f"plane_index_max={self.plane_index_max}")
 
     def get_results(self):
         if self.use_isam:
@@ -615,13 +630,16 @@ class WallBackend(object):
             return None
         return get_azimuth_angle(self.get_normal_estimate(), degrees=True)
 
-    def plot(self, fig, ax, n_poses=20, live_update=True, final=False):
+    def plot(self, fig, ax, n_poses=20, live_update=True, final=False, plot_trajectory=True):
         """
         live_update: overwrite planes, otherwise will plat each as decreasingly transparent one. 
         final: add final estimates of all planes and label.
         """
         if self.need_to_update_results:
             self.get_results()
+
+        start_pose_index = max(max(0, self.pose_index - n_poses + 1), 0)
+        end_pose_index = self.pose_index + 1
 
         cmap = plt.get_cmap("inferno", n_poses)
 
@@ -631,6 +649,9 @@ class WallBackend(object):
             yaw_normal = np.r_[np.cos(yaw), np.sin(yaw)]
             line = np.c_[xyz[:2], xyz[:2] + PLOT_YAW_LENGTH * yaw_normal]
             assert line.shape == (2, 2)
+
+            relative_pose_index = self.pose_index - start_pose_index
+
             if self.pose_index > n_poses:
                 print(f"Plot warning: {self.pose_index} > {n_poses}")
             if live_update and (self.pose_index in self.plot_poses.keys()):
@@ -645,10 +666,15 @@ class WallBackend(object):
                     ),
                     # "line": ax.plot(line[0, :], line[1, :], color=cmap(self.pose_index))[0]
                 }
+        if plot_trajectory:
+            self.plot_trajectory(ax, cmap, n_poses)        
         if final:
             plane_indexes = np.arange(self.plane_index_max + 1)
         else:
             plane_indexes = [self.plane_index]
+
+        if not hasattr(self, 'wall_info_texts'):
+            self.wall_info_texts = {}
 
         for plane_index in plane_indexes:
             distance = self.get_global_distance_estimate(plane_index)
@@ -660,7 +686,15 @@ class WallBackend(object):
                     # arrow does not have a remove function.
                     self.plot_planes[plane_index]["arrow"].remove()
                     self.plot_planes[plane_index]["line"].remove()
-
+                '''
+                if plane_index in self.wall_info_texts:
+                    self.wall_info_texts[plane_index].remove()
+                    del self.wall_info_texts[plane_index]
+                if self.wall_info_texts:
+                    endpoint = distance * normal[:2]
+                    text_obj = ax.text(endpoint[0], endpoint[1], self.wall_info_texts[plane_index], fontsize=8)
+                    self.wall_info_texts[plane_index] = text_obj
+                '''
                 if live_update:
                     arrow, line = plot_wall(
                         distance, normal, ax, plane_index, label=label
@@ -689,3 +723,46 @@ class WallBackend(object):
                             label=f"estimate $\pi^{{({plane_index})}}$",
                         )
                 self.plot_planes[plane_index] = {"arrow": arrow, "line": line}
+
+    def plot_trajectory(self, ax, cmap, n_poses):
+        if self.pose_index < 0:
+            return
+        
+        start_pose_idx = max(0, self.pose_index - n_poses + 1)
+        end_pose_idx = self.pose_index + 1
+
+        traj_points = []
+        traj_yaws = []
+        # Collect trajectory points and yaws
+        for pose_idx in range(start_pose_idx, end_pose_idx):
+            try:
+                pose = self.result.atPose3(X(pose_idx))
+                if pose is not None:
+                    traj_points.append(pose.translation())
+                    traj_yaws.append(pose.rotation().yaw())
+            except RuntimeError:
+                print(f"Warning: Pose {pose_idx} not found")
+                continue
+        
+        if not traj_points:
+            return
+        
+        traj_points = np.array(traj_points)
+        traj_yaws = np.array(traj_yaws)
+
+        # plot the point if the pose is not already plotted
+        for i, point in enumerate(traj_points):
+            if i not in self.plot_poses:
+                self.plot_poses[i] = {"point":ax.scatter(
+                                    point[0], point[1], marker="o", color='blue')}
+        
+        # highlight the current pose
+        if self.pose_index in self.plot_poses:
+            self.plot_poses[self.pose_index] = {"point":ax.scatter(
+                                    traj_points[self.pose_index][0], traj_points[self.pose_index][1], 
+                                    marker='*', color='red', edgecolors='black')}
+            ax.arrow(traj_points[self.pose_index][0], traj_points[self.pose_index][1], 
+                     PLOT_YAW_LENGTH * np.cos(traj_yaws[self.pose_index]), 
+                     PLOT_YAW_LENGTH * np.sin(traj_yaws[self.pose_index]),
+                     head_width=0.005, head_length=0.005, linewidth=1,
+                     fc='red', ec='black', alpha=0.9, zorder=5)

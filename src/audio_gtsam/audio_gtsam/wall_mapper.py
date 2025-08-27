@@ -37,7 +37,6 @@ class WallMapper(NodeWithParams):
         self._subscription_dist_moving = self.create_subscription(
             Distribution, "results/distribution_moving", self.listener_callback_dist, 10
         )
-
         self.pose_synch = TopicSynchronizer(10, n_buffer=200)
         self._subscription_pose = self.create_subscription(
             PoseRaw, "geometry/pose_raw", self.pose_synch.listener_callback, 10,
@@ -52,9 +51,9 @@ class WallMapper(NodeWithParams):
         # add SLAM visualization
         self.enable_viz = True
         self.visualization_counter = 0
-        self.plot_interval = 5
+        self.plot_interval = 10
         self.save_plots = True
-        self.plot_dir = Path("/audioROS/AUDIOROS/SLAM_VIS")
+        self.plot_dir = Path("/audioROS/AUDIOROS/SLAM_VIS_3")
         self.plot_dir.mkdir(exist_ok=True)
         
 
@@ -72,7 +71,7 @@ class WallMapper(NodeWithParams):
 
         # add pose factor
         self.wall_backend.add_pose(
-            r_world, yaw_deg / 180 * np.pi, verbose=False, logger=self.get_logger()
+            r_world, yaw_deg / 180 * np.pi, verbose=True, logger=self.get_logger()
         )
 
         # add plane factor
@@ -81,14 +80,14 @@ class WallMapper(NodeWithParams):
         # self.get_logger().warn(f"distribution: {distances[0]}...{distances[-1]}, {probs[0]}, {probs[-1]}")
 
         self.wall_backend.add_plane_from_distances(
-            distances, probs, verbose=False, logger=self.get_logger()
+            distances, probs, verbose=True, logger=self.get_logger()
         )
-
+        '''
         # add visualization functions
         self.visualization_counter += 1
         if self.enable_viz and (self.visualization_counter % self.plot_interval == 0):
             self.call_visualizer()
-
+        '''
 
     def check_wall_callback(self, request, response):
         # find which enum the state corresponds to
@@ -120,9 +119,9 @@ class WallMapper(NodeWithParams):
             self.wall_backend.plot(
                 ax=ax,
                 fig=fig,
-                n_poses=max(current_poses, 20),  # 确保颜色映射范围足够
+                n_poses=20,
                 live_update=False,
-                final=True
+                final=True,
             )
 
             if self.save_plots:

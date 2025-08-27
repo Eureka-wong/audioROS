@@ -75,7 +75,8 @@ class Mode(Enum):
     BLIND = 2
 
 
-MODE = Mode.FSLICE
+# MODE = Mode.FSLICE
+MODE = Mode.DSLICE
 DRONE = 0  # 0: no drone, 1: buzzer only, 2: flying
 
 
@@ -129,7 +130,8 @@ class PythonLogger(object):
 
 
 class WallDetection(NodeWithParams):
-    PARAMS_DICT = {"mode": Mode.FSLICE.value, "drone": int(DRONE)}
+    # PARAMS_DICT = {"mode": Mode.FSLICE.value, "drone": int(DRONE)}
+    PARAMS_DICT = {"mode": Mode.DSLICE.value, "drone": int(DRONE)}
 
     BEAMFORM = False
 
@@ -602,6 +604,22 @@ class WallDetection(NodeWithParams):
                 )
 
             if PUBLISH_MOVING:
+                theoretical_distance = 1000.0 - position_cm[0]
+                '''
+                TODO: Implement distance weighting to improve localization accuracy
+                distance_weight = self.calculate_distance_weight(theoretical_distance)
+
+                if distance_weight > 0:
+                    self.estimator.add_weighted_distributions(
+                        diff_dict,
+                        weight=distance_weight,
+                        position_cm=r_world * 1e2,
+                        rot_deg=yaw,
+                    )
+                else:
+                    self.logger.warn(f"Reject data at distance {theoretical_distance:.1f}cm")
+                    return
+                '''
                 self.estimator.add_distributions(
                     diff_dict,
                     position_cm=r_world * 1e2,
@@ -625,11 +643,11 @@ class WallDetection(NodeWithParams):
                 max_prob_idx = np.argmax(probabilities)
                 max_probability = probabilities[max_prob_idx]
                 corresponding_distance = distances_cm[max_prob_idx]
-                theoretical_distance = 1000.0 - position_cm[0]
+                
                 signal_strength = np.mean(magnitudes_calib, axis=0)
 
                 # self.logger.warn(f"Max probability: {max_probability:.6f} at distance: {corresponding_distance:.1f}cm ({corresponding_distance/100:.3f}m)")
-                # self.logger.warn(f"real distance:{theoretical_distance:.1f}cm")
+                self.logger.warn(f"estimated distance: {corresponding_distance:.1f}cm, real distance: {theoretical_distance:.1f}cm")
 
                 # 更新绘图数据
                 error = abs(corresponding_distance - theoretical_distance)
@@ -646,24 +664,32 @@ class WallDetection(NodeWithParams):
                     position_cm, max_probability, corresponding_distance, 
                     theoretical_distance, error, signal_strength, timestamp
                 )
-
+                '''
                 # 每5个数据点更新一次图像
-                if len(self.plot_data['x_positions']) % 3 == 0:
+                # if self.data_count % 5 == 0:
+                if len(self.plot_data['x_positions']) % 5 == 0:
                     # pass
                     self.plot_estimate_error()
                 # if self.eps_experiment_config['enabled']:
                 #     self.update_eps_experiment_analysis()
                     # self.plot_eps_probability_distributions()
-                '''
-                self.logger.info(
-                    f"Published moving-average distribution with timestamp {timestamp}"
-                )
+               
+                # self.logger.info(
+                #     f"Published moving-average distribution with timestamp {timestamp}"
+                # )
                 
             self.new_sample_to_treat = True
 
         else:
             self.logger.error(f"Did not find valid audio for pose {timestamp}")
 
+    # def calculate_distance_weight(self, distance_cm):
+    #     OPTIMAL_MIN = 75.0
+    #     OPTIMAL_MAX = 175.0
+    #     REJECT_MIN = 50.0
+    #     REJECT_MAX = 200.0
+        
+        
     def change_state_manual_callback(self, request, response):
         # find which enum the state corresponds to
         self.state_by_server = State(request.state)
@@ -927,7 +953,7 @@ class WallDetection(NodeWithParams):
             ax.set_xlabel('distance (cm)')
             ax.set_ylabel('error (cm)')
             # 更新标题包含EPS信息
-            ax.set_title(f'Error vs Distance - EPS: {current_eps:.3f}m', fontsize=12, fontweight='bold')
+            ax.set_title(f'Error vs Distance', fontsize=12, fontweight='bold')
             ax.grid(True, alpha=0.3)
             ax.axhline(y=0, color='r', linestyle='--', alpha=0.5)
 
@@ -936,8 +962,8 @@ class WallDetection(NodeWithParams):
             cbar.set_label('confidence (probability)')
 
             # 保存图像
-            os.makedirs("AUDIOROS/8.12/test4/x=8.0", exist_ok=True)
-            plt.savefig("AUDIOROS/8.12/test4/x=8.0/wall_detection_error_analysis-5.png", dpi=150, bbox_inches='tight')
+            os.makedirs("AUDIOROS/8.26/test", exist_ok=True)
+            plt.savefig("AUDIOROS/8.26/test/wall_detection_error_analysis-1.png", dpi=150, bbox_inches='tight')
             plt.close()
             
         except Exception as e:

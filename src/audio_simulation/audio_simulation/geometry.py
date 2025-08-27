@@ -7,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 ROOM_DIM = np.array([10.0, 7.0, 5.0])  # room dimensions [m].
 # SPEAKER_POSITION = np.array([10.0, 3.0, 1.0])  # external source position [m], None for no external source.
 SPEAKER_POSITION = None  # external source position [m], None for no external source.
-STARTING_POS = np.array([8.0, 3.5, 0.4])  # drone starting position [m]
+STARTING_POS = np.array([8.2, 3.5, 0.4])  # drone starting position [m]
 STARTING_YAW_DEG = 0  # starting absoltue yaw angle in degrees
 
 def global_positions_from_2d(local_positions_2D, msg_pose, z=0):

@@ -61,6 +61,7 @@ class MovingEstimator(BaseEstimator):
         self.relative_movement_std = relative_movement_std
         self.distances_cm = distances_cm
         self.angles_deg = angles_deg
+        self.data_count = 0
 
     def get_distributions(self, verbose=False, simplify_angles=True, plot_angles=[]):
         def clean_distribution(dist):

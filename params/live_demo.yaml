@@ -32,4 +32,4 @@ wall_detection:
 launch:
   ros__parameters:
     log_level: "warn"
-    bag_record_root: "datasets/2025_08_15_demo/test"
+    bag_record_root: "datasets/2025_08_20_demo/test"

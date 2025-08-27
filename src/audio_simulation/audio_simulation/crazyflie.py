@@ -86,9 +86,6 @@ def create_room(speaker_position, buzzer_position, mic_array):
     assert mic_array.ndim == 2
     assert mic_array.shape[1] in (2, 3), f"{mic_array.shape}"
 
-    # 设置墙壁吸收系数，较低的值意味着更多反射，有利于回声定位
-    # 0.1 表示墙壁吸收10%的声能，反射90%
-    # 对于2D房间，需要指定east, west, north, south四面墙
     absorption_coeffs = {
         'east': 0.1,    # 东墙
         'west': 0.1,    # 西墙  
@@ -142,7 +139,7 @@ class CrazyflieSimulation(NodeWithParams):
 
         self.room = None
 
-        self.current_pose = create_pose_message(
+        self.current_pose = create_pose_message( 
             *STARTING_POS, yaw_deg=STARTING_YAW_DEG,  # x, y, z
         ).pose
 

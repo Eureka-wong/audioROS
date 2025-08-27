@@ -11,7 +11,7 @@ import os
 import matplotlib.pylab as plt
 import numpy as np
 
-from .constants import AUDIO_SAMPLING_RATE
+from constants import AUDIO_SAMPLING_RATE
 
 MIN_FREQ = 200
 MAX_FREQ = 7000

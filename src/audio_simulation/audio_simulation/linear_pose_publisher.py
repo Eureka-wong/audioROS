@@ -24,7 +24,7 @@ from audio_simulation.geometry import (
     STARTING_YAW_DEG,
 )
 
-VELOCITY = np.array([0.04, 0.0, 0.0])  # m/s, in drone coordinates
+VELOCITY = np.array([0.04, 0.04, 0.0])  # m/s, in drone coordinates
 # 修改为x方向前进，匹配wall_detection的前向运动
 EPS = 0.10  # m, safety margin from walls
 MAX_Y = None
@@ -37,6 +37,7 @@ class LinearPosePublisher(Node):
         constant_velocity=VELOCITY,
         starting_yaw_deg=STARTING_YAW_DEG,
         max_y=MAX_Y,
+        yaw_rate_deg=15.0, #changing rate of yaw deg in seconds
     ):
         super().__init__("linear_pose_publisher")
 
@@ -47,6 +48,8 @@ class LinearPosePublisher(Node):
         self.constant_velocity = constant_velocity
         self.position = starting_position
         self.max_y = max_y
+        self.yaw_rate_deg = yaw_rate_deg
+        self.yaw_rate_deg_rad = np.deg2rad(yaw_rate_deg) # convert to radians
         assert np.all(
             (EPS <= self.position) | (self.position <= ROOM_DIM - EPS)
         ), "starting position not inside room!"
@@ -102,7 +105,11 @@ class LinearPosePublisher(Node):
     def timer_callback(self):
         # if self.should_stop:
         #     return
-        
+        current_yaw_rad = self.rot.as_euler("zyx", degrees=False)[0]  # 获取当前yaw角度（弧度）
+        new_yaw_rad = current_yaw_rad + self.yaw_rate_deg_rad * self.timer_period  # 更新yaw角度
+
+        self.rot = R.from_euler("zyx", [new_yaw_rad, 0, 0], degrees=False)
+
         delta = self.rot.apply(self.timer_period * self.constant_velocity)
         new_position = self.position + delta
 
@@ -157,7 +164,7 @@ class LinearPosePublisher(Node):
             x=self.position[0], y=self.position[1], z=self.position[2],
             yaw_deg=yaw_deg,
             vx=self.constant_velocity[0], vy=self.constant_velocity[1],
-            yaw_rate_deg=0.0,  # 假设角速度为0
+            yaw_rate_deg=self.yaw_rate_deg,  # 假设角速度为1
             timestamp=timestamp,
         )
         self.publisher_pose_raw.publish(msg_raw)
@@ -166,7 +173,7 @@ class LinearPosePublisher(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    linear_pub = LinearPosePublisher()
+    linear_pub = LinearPosePublisher(yaw_rate_deg=15.0)
 
     rclpy.spin(linear_pub)
 
