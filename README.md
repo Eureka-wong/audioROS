@@ -51,15 +51,15 @@ colcon build --packages-select package_you_modified
 ## Visualization results
 Below are some visualization results 
 1. Wall approaching simulation error analysis
- ![Wall approaching simulation](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/8.26/wall_approaching_err.png)
+ ![Wall approaching simulation](https://github.com/Eureka-wong/audioROS/blob/master/AUDIOROS/8.26/wall_approaching_err.png)
 
 2. Drone circular motion trail visualization
 * Motion trail-2D
-![circular motion trail 2D](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/SLAM_VIS_2/slam_0080.png)
+![circular motion trail 2D](https://github.com/Eureka-wong/audioROS/blob/master/AUDIOROS/SLAM_VIS_2/slam_0080.png)
 * Motion trail-3D
-![circular motion trail 3D](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/8.26/drone_trajectory.png)
+![circular motion trail 3D](https://github.com/Eureka-wong/audioROS/blob/master/AUDIOROS/8.26/drone_trajectory.png)
 * Error analysis
-![circular trail error](https://github.com/Eureka-wong/audioROS/blob/simu/AUDIOROS/8.26/wall_detection_error_analysis-1.png)
+![circular trail error](https://github.com/Eureka-wong/audioROS/blob/master/AUDIOROS/8.26/wall_detection_error_analysis-1.png)
 
 ## References
 Please refer to the below publications for more information.
